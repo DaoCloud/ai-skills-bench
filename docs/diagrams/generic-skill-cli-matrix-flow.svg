@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" width="1200" height="760">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }
+    .title { font-size: 24px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .label { font-size: 15px; font-weight: 600; fill: #111827; }
+    .small { font-size: 12px; fill: #6b7280; }
+    .tiny { font-size: 11px; fill: #6b7280; }
+    .box { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; rx: 8; ry: 8; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .group { fill: none; stroke: #d1d5db; stroke-width: 1.5; stroke-dasharray: 7 6; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#ea580c"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="760" fill="#ffffff"/>
+  <text x="40" y="42" class="title">功能一：Generic LLM Agent 的 Skill / CLI Matrix 评测逻辑</text>
+  <text x="40" y="66" class="subtitle">目标：由 matrix 编排 agent 与 model，task 注入 SKILL.md 和 CLI wrapper，让 LLM 自主推理命令并由 verifier / cliExpect 判定。</text>
+
+  <rect x="34" y="92" width="260" height="236" class="group"/>
+  <text x="52" y="116" class="label">Matrix 配置</text>
+  <rect x="58" y="138" width="200" height="62" class="box blue"/>
+  <text x="78" y="164" class="label">eval-matrix.yaml</text>
+  <text x="78" y="184" class="small">agents / models / dirs / runs</text>
+  <rect x="58" y="226" width="200" height="62" class="box green"/>
+  <text x="78" y="252" class="label">task.yaml</text>
+  <text x="78" y="272" class="small">agent / skills / clis / script</text>
+
+  <rect x="356" y="116" width="220" height="74" class="box orange"/>
+  <text x="386" y="146" class="label">k8s-ai-bench run</text>
+  <text x="386" y="167" class="small">loadMatrixConfig + loadTasks</text>
+
+  <rect x="650" y="92" width="494" height="126" class="group"/>
+  <text x="670" y="116" class="label">任务执行上下文</text>
+  <rect x="680" y="138" width="170" height="56" class="box teal"/>
+  <text x="703" y="162" class="label">taskOutputDir</text>
+  <text x="703" y="181" class="small">log / prompt / result</text>
+  <rect x="898" y="138" width="190" height="56" class="box teal"/>
+  <text x="923" y="162" class="label">环境变量合并</text>
+  <text x="923" y="181" class="small">agent.env + model.env</text>
+
+  <rect x="352" y="262" width="232" height="82" class="box purple"/>
+  <text x="377" y="292" class="label">composePrompt()</text>
+  <text x="377" y="313" class="small">prompt + SKILL.md + CLI 清单</text>
+  <text x="377" y="331" class="tiny">写入 prompt.txt，并通过 stdin 传给 agent</text>
+
+  <rect x="648" y="266" width="232" height="82" class="box blue"/>
+  <text x="676" y="296" class="label">generic-llm-agent</text>
+  <text x="676" y="317" class="small">--llm-provider / --model</text>
+  <text x="676" y="335" class="tiny">循环解析 &lt;command&gt; 或 &lt;final&gt;</text>
+
+  <rect x="954" y="266" width="190" height="82" class="box blue"/>
+  <text x="985" y="296" class="label">LLM Provider</text>
+  <text x="985" y="317" class="small">Gemini / OpenAI-compatible</text>
+  <text x="985" y="335" class="tiny">返回下一步命令或最终答案</text>
+
+  <rect x="94" y="420" width="248" height="110" class="box green"/>
+  <text x="122" y="450" class="label">CLI wrapper 目录</text>
+  <text x="122" y="472" class="small">shadow task 声明的 CLI 名称</text>
+  <text x="122" y="492" class="tiny">PATH = cli-wrappers:$PATH</text>
+  <text x="122" y="510" class="tiny">禁止覆盖 bash / kubectl / go 等保留命令</text>
+
+  <rect x="430" y="420" width="214" height="110" class="box orange"/>
+  <text x="458" y="450" class="label">真实 CLI</text>
+  <text x="458" y="472" class="small">例如 clisDir/dce</text>
+  <text x="458" y="492" class="tiny">wrapper 转发 argv 并保留 exit code</text>
+
+  <rect x="742" y="420" width="214" height="110" class="box purple"/>
+  <text x="770" y="450" class="label">审计记录</text>
+  <text x="770" y="472" class="small">cli-audit.jsonl</text>
+  <text x="770" y="492" class="tiny">name / argv / cwd / exitCode</text>
+
+  <rect x="1004" y="420" width="140" height="110" class="box red"/>
+  <text x="1034" y="450" class="label">K8s / DCE</text>
+  <text x="1034" y="472" class="small">被诊断集群</text>
+  <text x="1034" y="492" class="tiny">只读检查</text>
+
+  <rect x="338" y="610" width="218" height="76" class="box teal"/>
+  <text x="368" y="640" class="label">verifier.sh</text>
+  <text x="368" y="661" class="small">读取 log 与 cli-audit</text>
+
+  <rect x="630" y="610" width="218" height="76" class="box teal"/>
+  <text x="660" y="640" class="label">cliExpect / expect</text>
+  <text x="660" y="661" class="small">校验命令与输出模式</text>
+
+  <rect x="926" y="610" width="218" height="76" class="box green"/>
+  <text x="956" y="640" class="label">TaskResult</text>
+  <text x="956" y="661" class="small">success / fail / error</text>
+
+  <path d="M258 169 L356 153" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M258 257 L356 153" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M576 153 L680 166" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M850 166 L898 166" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M466 190 L466 262" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M584 307 L648 307" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M880 307 L954 307" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M954 328 C910 372 790 374 755 348" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M696 348 C642 392 402 380 292 420" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <path d="M342 475 L430 475" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <path d="M644 475 L742 475" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M644 475 L1004 475" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <path d="M849 530 L739 610" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M218 530 C250 590 312 625 338 648" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M556 648 L630 648" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M848 648 L926 648" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+
+  <rect x="720" y="224" width="92" height="24" rx="6" ry="6" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="735" y="241" class="tiny">stdin prompt</text>
+  <rect x="452" y="386" width="136" height="24" rx="6" ry="6" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="466" y="403" class="tiny">&lt;command&gt; 执行</text>
+  <rect x="980" y="384" width="132" height="24" rx="6" ry="6" fill="#ffffff" stroke="#fecaca"/>
+  <text x="994" y="401" class="tiny">实际诊断查询</text>
+
+  <g transform="translate(40, 710)">
+    <line x1="0" y1="8" x2="30" y2="8" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <text x="38" y="12" class="small">配置 / prompt 流</text>
+    <line x1="170" y1="8" x2="200" y2="8" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+    <text x="208" y="12" class="small">命令执行流</text>
+    <line x1="340" y1="8" x2="370" y2="8" stroke="#9333ea" stroke-width="2" marker-end="url(#arrow-purple)"/>
+    <text x="378" y="12" class="small">审计 / 反馈流</text>
+    <line x1="526" y1="8" x2="556" y2="8" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text x="564" y="12" class="small">判定 / 结果流</text>
+  </g>
+</svg>

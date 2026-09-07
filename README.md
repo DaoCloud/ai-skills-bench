@@ -31,6 +31,23 @@ Run the benchmark against your agent binary. Results will be saved to the `.buil
 ./k8s-ai-bench run --agent-bin <path/to/kubectl-ai> --task-pattern "scale" --output-dir .build/k8s-ai-bench
 ```
 
+### Run with Docker
+You can also build a container image and run the benchmark with mounted agent,
+kubeconfig, Docker socket, and output directories:
+
+```sh
+docker build -t k8s-ai-bench .
+docker run --rm \
+  -e GEMINI_API_KEY \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$(command -v kubectl-ai):/usr/local/bin/kubectl-ai:ro" \
+  -v "$PWD/.build:/bench/.build" \
+  k8s-ai-bench run --agent-bin kubectl-ai --output-dir /bench/.build/k8s-ai-bench
+```
+
+See [Docker usage](docs/docker.md) for kind, vCluster, matrix, and analyze
+examples.
+
 ## 🛠 Usage Guide
 
 ### `run` Subcommand
@@ -66,6 +83,54 @@ To use `vcluster`, you must have:
 | `--concurrency` | Number of parallel tasks (0 = auto) | 0 |
 | `--cluster-provider` | Cluster provider to use (`kind` or `vcluster`) | kind |
 | `--host-cluster-context` | Host cluster context for vcluster (Required if provider is vcluster) | - |
+
+### Agent/Skill/CLI Matrix Mode
+
+For skill and CLI benchmarks, use a matrix file to declare agents, models, optional local skill/CLI directories, task directories, output directories, and run settings:
+
+```sh
+./k8s-ai-bench run \
+  --matrix-file eval-matrix.yaml
+```
+
+Each task can select the agent and declare any required local skills and CLIs explicitly:
+
+```yaml
+agent: generic
+skills:
+  - kube-debug/SKILL.md
+clis:
+  - name: kube-inspector
+    path: kube-inspector
+    required: true
+script:
+  - prompt: Diagnose and fix the failing pod using the provided skill.
+cliExpect:
+  - name: kube-inspector
+    required: true
+    argvContains:
+      - inspect
+      - pod
+verifier: verify.sh
+difficulty: medium
+```
+
+For generic Skill/CLI evaluation, build the bundled minimal agent and reference it with the `generic-stdin` adapter:
+
+```sh
+go build -o generic-llm-agent ./cmd/generic-llm-agent
+```
+
+The generic agent reads the injected prompt from stdin, asks the configured LLM to emit `<command>` or `<final>` blocks, and executes commands from `PATH`. Benchmark CLI wrappers still provide auditing.
+
+Hermes can be evaluated as an independent stdin agent through the bundled bridge:
+
+```sh
+go build -o k8s-ai-hermes-bridge ./cmd/k8s-ai-hermes-bridge
+./k8s-ai-bench run --matrix-file eval-matrix-hermes.yaml
+```
+
+See [docs/agent-skill-cli-matrix.md](docs/agent-skill-cli-matrix.md) for the full matrix workflow, adapter contracts, CLI wrapper audit behavior, and Hermes bridge details.
 
 ### `analyze` Subcommand
 Process and summarize results from previous runs.

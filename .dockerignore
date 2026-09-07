@@ -1,0 +1,10 @@
+.build/
+.env
+.git/
+bin/
+coverage.out
+coverage.html
+k8s-ai-bench
+generic-llm-agent
+k8s-ai-hermes-bridge
+site/combined_results.jsonl

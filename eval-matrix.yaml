@@ -1,0 +1,28 @@
+skillsDir: ./skills
+clisDir: ./clis
+tasksDir: ./tasks/skill-cli
+outputDir: .build/skill-cli-bench
+clusterCreationPolicy: DoNotCreate
+
+agents:
+  - id: generic
+    bin: ./generic-llm-agent
+    adapter: generic-stdin
+    args:
+      - --max-iterations
+      - "20"
+      - --command-timeout
+      - 3m
+
+models:
+  - id: example-openai-compatible
+    provider: openai
+    model: example-model
+    env:
+      OPENAI_API_BASE: ${OPENAI_API_BASE}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+runs:
+  iterations: 1
+  concurrency: 1
+  taskPattern: "kpanda-cluster-diagnosis"

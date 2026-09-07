@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" width="1200" height="760">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }
+    .title { font-size: 24px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .label { font-size: 15px; font-weight: 600; fill: #111827; }
+    .small { font-size: 12px; fill: #6b7280; }
+    .tiny { font-size: 11px; fill: #6b7280; }
+    .box { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; rx: 8; ry: 8; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .group { fill: none; stroke: #d1d5db; stroke-width: 1.5; stroke-dasharray: 7 6; rx: 12; ry: 12; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#ea580c"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="760" fill="#ffffff"/>
+  <text x="40" y="42" class="title">功能二：Hermes API Bridge 评测逻辑</text>
+  <text x="40" y="66" class="subtitle">目标：bench 仍按 matrix 运行任务，但把 prompt 转成 OpenAI-compatible 请求，交给服务端 Hermes Agent 环境执行诊断。</text>
+
+  <rect x="38" y="102" width="256" height="204" class="group"/>
+  <text x="58" y="126" class="label">Hermes Matrix</text>
+  <rect x="64" y="150" width="198" height="58" class="box blue"/>
+  <text x="84" y="174" class="label">eval-matrix-hermes.yaml</text>
+  <text x="84" y="193" class="small">agent: hermes / generic-stdin</text>
+  <rect x="64" y="230" width="198" height="50" class="box green"/>
+  <text x="84" y="253" class="label">skill-cli-hermes task</text>
+  <text x="84" y="271" class="small">skills + script，无本地 clis</text>
+
+  <rect x="364" y="132" width="224" height="76" class="box orange"/>
+  <text x="394" y="162" class="label">k8s-ai-bench</text>
+  <text x="394" y="183" class="small">加载 task / model / agent</text>
+
+  <rect x="364" y="260" width="224" height="86" class="box purple"/>
+  <text x="392" y="292" class="label">composePrompt()</text>
+  <text x="392" y="313" class="small">prompt + SKILL.md</text>
+  <text x="392" y="331" class="tiny">写 prompt.txt，通过 stdin 传入 bridge</text>
+
+  <rect x="668" y="230" width="246" height="126" class="box blue"/>
+  <text x="696" y="263" class="label">k8s-ai-hermes-bridge</text>
+  <text x="696" y="286" class="small">读取 stdin 为 prompt steps</text>
+  <text x="696" y="305" class="tiny">构造 system prompt：强调服务端 Hermes 环境</text>
+  <text x="696" y="323" class="tiny">request model = HERMES_MODEL</text>
+  <text x="696" y="341" class="tiny">可切换为 benchmark model</text>
+
+  <rect x="992" y="110" width="162" height="124" class="box teal"/>
+  <text x="1020" y="143" class="label">配置来源</text>
+  <text x="1020" y="166" class="small">BASE_URL</text>
+  <text x="1020" y="185" class="small">API_KEY</text>
+  <text x="1020" y="204" class="small">TIMEOUT / MODEL</text>
+
+  <rect x="968" y="300" width="186" height="96" class="box orange"/>
+  <text x="996" y="333" class="label">Hermes API Server</text>
+  <text x="996" y="355" class="small">POST /v1/chat/completions</text>
+  <text x="996" y="374" class="tiny">Bearer API key</text>
+
+  <rect x="968" y="464" width="186" height="102" class="box green"/>
+  <text x="996" y="497" class="label">Hermes Agent 环境</text>
+  <text x="996" y="519" class="small">server-side skills / CLIs</text>
+  <text x="996" y="538" class="tiny">不依赖 runner 本地 kubeconfig</text>
+
+  <rect x="668" y="472" width="246" height="86" class="box purple"/>
+  <text x="696" y="504" class="label">响应解析与 trace</text>
+  <text x="696" y="525" class="small">choices[0].message.content</text>
+  <text x="696" y="543" class="tiny">写 hermes-trace.json：请求、耗时、摘要、错误</text>
+
+  <rect x="364" y="510" width="224" height="84" class="box teal"/>
+  <text x="394" y="541" class="label">log.txt / stdout</text>
+  <text x="394" y="562" class="small">bridge 输出 Hermes 最终答案</text>
+  <text x="394" y="580" class="tiny">bench 保存执行日志</text>
+
+  <rect x="120" y="490" width="220" height="104" class="box red"/>
+  <text x="150" y="524" class="label">verifier.sh</text>
+  <text x="150" y="546" class="small">只检查日志内容</text>
+  <text x="150" y="565" class="tiny">cluster / node / pod / root cause</text>
+  <text x="150" y="583" class="tiny">无本地 cli-audit 依赖</text>
+
+  <rect x="120" y="650" width="220" height="62" class="box green"/>
+  <text x="150" y="676" class="label">TaskResult</text>
+  <text x="150" y="696" class="small">success / fail / error</text>
+
+  <path d="M262 179 L364 170" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M262 255 L364 170" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M476 208 L476 260" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M588 303 L668 293" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M914 293 C950 268 988 236 1030 224" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M914 322 L968 348" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <path d="M1061 396 L1061 464" stroke="#ea580c" stroke-width="2" fill="none" marker-end="url(#arrow-orange)"/>
+  <path d="M968 515 L914 515" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M668 515 C620 528 610 548 588 552" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M364 552 L340 542" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M230 594 L230 650" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M230 490 C210 420 320 344 364 330" stroke="#dc2626" stroke-width="2" fill="none" marker-end="url(#arrow-red)"/>
+
+  <rect x="594" y="264" width="72" height="24" rx="6" ry="6" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="605" y="281" class="tiny">stdin</text>
+  <rect x="928" y="334" width="36" height="24" rx="6" ry="6" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="936" y="351" class="tiny">HTTP</text>
+  <rect x="834" y="574" width="120" height="24" rx="6" ry="6" fill="#ffffff" stroke="#e9d5ff"/>
+  <text x="848" y="591" class="tiny">hermes-trace.json</text>
+  <rect x="250" y="406" width="150" height="24" rx="6" ry="6" fill="#ffffff" stroke="#fecaca"/>
+  <text x="264" y="423" class="tiny">失败时记录 error trace</text>
+
+  <g transform="translate(40, 724)">
+    <line x1="0" y1="8" x2="30" y2="8" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <text x="38" y="12" class="small">配置 / prompt 流</text>
+    <line x1="170" y1="8" x2="200" y2="8" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+    <text x="208" y="12" class="small">API 调用 / 服务端执行</text>
+    <line x1="396" y1="8" x2="426" y2="8" stroke="#9333ea" stroke-width="2" marker-end="url(#arrow-purple)"/>
+    <text x="434" y="12" class="small">响应 / trace 流</text>
+    <line x1="574" y1="8" x2="604" y2="8" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text x="612" y="12" class="small">判定 / 结果流</text>
+    <line x1="752" y1="8" x2="782" y2="8" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+    <text x="790" y="12" class="small">错误路径</text>
+  </g>
+</svg>

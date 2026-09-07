@@ -1,13 +1,19 @@
 # Binary
 k8s-ai-bench
 kubectl-ai
+/generic-llm-agent
+/k8s-ai-hermes-bridge
+/clis/dce
 gatekeeper-taskgen/gatekeeper-taskgen
+kubectl-ai-*
+*.tar.gz
 
 # Log files
 *.log
 trace.log
 
 # IDE specific files
+.DS_Store
 .idea/
 .vscode/
 *.swp
@@ -23,3 +29,4 @@ trace.log
 
 # kubeconfig
 kubeconfig.yaml
+*kubeconfig*.yaml

@@ -1,0 +1,12 @@
+agent: hermes
+
+script:
+  - prompt: |
+      Diagnose the health of the Kubernetes cluster named kpanda-global-cluster.
+      Follow the provided Kpanda cluster diagnosis workflow.
+      Do not remediate anything; only inspect and report findings.
+      Do not guess cluster state. If you cannot inspect the live cluster through the available Hermes server-side tools, say that live inspection failed instead of inventing node, pod, or event details.
+
+verifier: verify.sh
+difficulty: medium
+timeout: 10m

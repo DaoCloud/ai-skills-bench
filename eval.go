@@ -119,7 +119,7 @@ func runEvaluation(ctx context.Context, config EvalConfig) error {
 	taskCh := make(chan taskJob, len(tasks))
 
 	// Create a channel for collecting results
-	resultsCh := make(chan model.TaskResult, len(tasks)*len(config.LLMConfigs))
+	resultsCh := make(chan model.TaskResult, len(tasks)*len(config.LLMConfigs)*config.Iterations)
 
 	// Create a separate channel for errors
 	errorsCh := make(chan error, config.Concurrency)
@@ -144,47 +144,52 @@ func runEvaluation(ctx context.Context, config EvalConfig) error {
 			for job := range taskCh {
 				fmt.Printf("Worker %d: Evaluating task: %s\n", workerID, job.taskID)
 
-				for _, llmConfig := range config.LLMConfigs {
-					taskOutputDir := ""
-					if config.OutputDir != "" {
-						taskOutputDir = filepath.Join(config.OutputDir, job.taskID)
+				for iteration := 1; iteration <= config.Iterations; iteration++ {
+					for _, llmConfig := range config.LLMConfigs {
+						agentID := resolveTaskAgent(job.task)
+						taskOutputDir := filepath.Join(
+							config.OutputDir,
+							fmt.Sprintf("iteration-%d", iteration),
+							job.taskID,
+							sanitizePathPart(agentID),
+							sanitizePathPart(llmConfig.ID),
+							"task-skills",
+						)
 						if err := os.MkdirAll(taskOutputDir, 0755); err != nil {
 							errorsCh <- fmt.Errorf("creating directory %q: %w", taskOutputDir, err)
 							return
 						}
-					}
 
-					var log io.Writer
-					if taskOutputDir != "" {
 						logPath := filepath.Join(taskOutputDir, "log.txt")
 						logFile, err := os.Create(logPath)
 						if err != nil {
 							errorsCh <- fmt.Errorf("creating log file %q: %w", logPath, err)
 							return
 						}
-						defer logFile.Close()
-						log = logFile
-					}
 
-					start := time.Now()
-					fmt.Printf("\033[36mWorker %d: Started %s for %s\033[0m\n", workerID, llmConfig.ID, job.taskID)
+						start := time.Now()
+						fmt.Printf("\033[36mWorker %d: Started iteration %d %s for %s\033[0m\n", workerID, iteration, llmConfig.ID, job.taskID)
 
-					result := evaluateTask(ctx, config, job.taskID, job.task, llmConfig, clusterProvider, log)
+						result := evaluateTask(ctx, config, job.taskID, job.task, llmConfig, iteration, clusterProvider, logFile)
+						if closeErr := logFile.Close(); closeErr != nil {
+							errorsCh <- fmt.Errorf("closing log file %q: %w", logPath, closeErr)
+							return
+						}
 
-					fmt.Printf("\033[32mWorker %d: Completed %s for %s in %s\033[0m\n",
-						workerID,
-						llmConfig.ID,
-						job.taskID,
-						time.Since(start).Round(time.Second),
-					)
+						fmt.Printf("\033[32mWorker %d: Completed iteration %d %s for %s in %s\033[0m\n",
+							workerID,
+							iteration,
+							llmConfig.ID,
+							job.taskID,
+							time.Since(start).Round(time.Second),
+						)
 
-					if taskOutputDir != "" {
-						if err := writeToYAMLFile(filepath.Join(taskOutputDir, "results.yaml"), result); err != nil {
+						if err := writeToYAMLFile(filepath.Join(taskOutputDir, "results.yaml"), redactTaskResult(result)); err != nil {
 							errorsCh <- fmt.Errorf("writing results to file: %w", err)
 							return
 						}
+						resultsCh <- result
 					}
-					resultsCh <- result
 				}
 			}
 		}(i)
@@ -222,6 +227,32 @@ func writeToYAMLFile(p string, obj any) error {
 		return fmt.Errorf("writing to file %q: %w", p, err)
 	}
 	return nil
+}
+
+func redactTaskResult(result model.TaskResult) model.TaskResult {
+	if len(result.LLMConfig.Env) == 0 {
+		return result
+	}
+	redactedEnv := make(map[string]string, len(result.LLMConfig.Env))
+	for key, value := range result.LLMConfig.Env {
+		if shouldRedactEnv(key) {
+			redactedEnv[key] = "[REDACTED]"
+			continue
+		}
+		redactedEnv[key] = value
+	}
+	result.LLMConfig.Env = redactedEnv
+	return result
+}
+
+func shouldRedactEnv(key string) bool {
+	upperKey := strings.ToUpper(key)
+	for _, marker := range []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL"} {
+		if strings.Contains(upperKey, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func loadTasks(config EvalConfig) (map[string]Task, error) {
@@ -284,10 +315,80 @@ func getLastNLines(s string, n int) (string, bool) {
 	return s, false
 }
 
-func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Task, llmConfig model.LLMConfig, clusterProvider cluster.Provider, log io.Writer) model.TaskResult {
+func resolveTaskAgent(task Task) string {
+	agentID := task.Agent
+	if agentID == "" {
+		agentID = "kubectl-ai"
+	}
+	return agentID
+}
+
+func sanitizePathPart(s string) string {
+	if s == "" {
+		return "_"
+	}
+	replacer := strings.NewReplacer("/", "-", "\\", "-", ":", "-", " ", "_")
+	return replacer.Replace(s)
+}
+
+func resolveRelativePath(baseDir, path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+	expanded, err := expandPath(path)
+	if err != nil {
+		return "", err
+	}
+	if filepath.IsAbs(expanded) {
+		return expanded, nil
+	}
+	if baseDir == "" {
+		return filepath.Abs(expanded)
+	}
+	base, err := expandPath(baseDir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(filepath.Join(base, expanded))
+}
+
+func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Task, llmConfig model.LLMConfig, iteration int, clusterProvider cluster.Provider, log io.Writer) model.TaskResult {
+	agentID := resolveTaskAgent(task)
 	result := model.TaskResult{
 		Task:      taskID,
 		LLMConfig: llmConfig,
+		AgentID:   agentID,
+		Iteration: iteration,
+	}
+
+	agentConfig, ok := config.Agents[agentID]
+	if !ok {
+		result.Result = "error"
+		result.Error = fmt.Sprintf("task %q references unknown agent %q", taskID, agentID)
+		return result
+	}
+	if config.MatrixFile != "" && task.Agent == "" {
+		result.Result = "error"
+		result.Error = fmt.Sprintf("task %q must specify agent when --matrix-file is used", taskID)
+		return result
+	}
+	if len(task.Skills) > 0 && config.SkillsDir == "" {
+		result.Result = "error"
+		result.Error = fmt.Sprintf("task %q declares local skills but matrix skillsDir is not set", taskID)
+		return result
+	}
+
+	for _, cli := range task.CLIs {
+		if cli.Name == "" || cli.Path == "" {
+			result.Result = "error"
+			result.Error = fmt.Sprintf("task %q has CLI with missing name or path", taskID)
+			return result
+		}
+	}
+	if len(task.CLIs) > 0 && config.CLIsDir == "" {
+		result.Result = "error"
+		result.Error = fmt.Sprintf("task %q declares local CLIs but matrix clisDir is not set", taskID)
+		return result
 	}
 
 	// Timeout limit for the whole task (setup, agent actions, verify)
@@ -305,7 +406,14 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 	taskCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	taskOutputDir := filepath.Join(config.OutputDir, taskID)
+	taskOutputDir := filepath.Join(
+		config.OutputDir,
+		fmt.Sprintf("iteration-%d", iteration),
+		taskID,
+		sanitizePathPart(agentID),
+		sanitizePathPart(llmConfig.ID),
+		"task-skills",
+	)
 
 	var logBuffer bytes.Buffer
 	multiWriter := io.MultiWriter(&logBuffer)
@@ -315,6 +423,7 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 
 	x := &TaskExecution{
 		AgentBin:        config.AgentBin,
+		agentConfig:     agentConfig,
 		kubeConfig:      config.KubeConfig,
 		result:          &result,
 		llmConfig:       llmConfig,
@@ -322,6 +431,8 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 		task:            &task,
 		taskID:          taskID,
 		taskOutputDir:   taskOutputDir,
+		skillsDir:       config.SkillsDir,
+		clisDir:         config.CLIsDir,
 		clusterProvider: clusterProvider,
 	}
 
@@ -374,6 +485,8 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 		result.Error = errorMessage
 		return result
 	}
+
+	cliFailures := x.evaluateCLIExpectations()
 
 	var expectationFailures []model.Failure
 
@@ -434,7 +547,11 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 	if task.Verifier != "" {
 		verifierPath := filepath.Join(taskDir, task.Verifier)
 		cmd := exec.CommandContext(taskCtx, verifierPath)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig))
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),
+			fmt.Sprintf("K8S_AI_BENCH_TASK_OUTPUT_DIR=%s", x.taskOutputDir),
+			fmt.Sprintf("K8S_AI_BENCH_CLI_AUDIT=%s", filepath.Join(x.taskOutputDir, "cli-audit.jsonl")),
+		)
 		fmt.Printf("\nRunning verifier for task %s\n", taskID)
 
 		err := x.runCommand(cmd)
@@ -455,7 +572,12 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 	}
 
 	expectationsMet := len(task.Expect) > 0 && len(expectationFailures) == 0
-	if verifierSucceeded || expectationsMet {
+	if len(cliFailures) > 0 {
+		result.Failures = append(result.Failures, cliFailures...)
+	}
+
+	cliExpectationsMet := len(cliFailures) == 0
+	if (verifierSucceeded || expectationsMet) && cliExpectationsMet {
 		result.Result = "success"
 	} else {
 		result.Result = "fail"
@@ -473,16 +595,19 @@ type TaskExecution struct {
 	// AgentBin holds the path to the agent to execute
 	AgentBin string
 
-	llmConfig model.LLMConfig
-	result    *model.TaskResult
-	log       io.Writer
-	task      *Task
-	taskID    string
-	taskDir   string
+	agentConfig AgentConfig
+	llmConfig   model.LLMConfig
+	result      *model.TaskResult
+	log         io.Writer
+	task        *Task
+	taskID      string
+	taskDir     string
 
 	// taskOutputDir is where we can create artifacts or write logs while executing the task
 	taskOutputDir string
 
+	skillsDir string
+	clisDir   string
 	// cleanupFunctions are a set of cleanupFunctions we run to undo anything we ran
 	cleanupFunctions []func() error
 
@@ -533,7 +658,10 @@ func (x *TaskExecution) runSetup(ctx context.Context) error {
 		setupPath := filepath.Join(x.taskDir, x.task.Setup)
 		cmd := exec.CommandContext(ctx, setupPath)
 		cmd.Dir = x.taskDir
-		cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig))
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),
+			fmt.Sprintf("K8S_AI_BENCH_TASK_OUTPUT_DIR=%s", x.taskOutputDir),
+		)
 
 		if err := x.runCommand(cmd); err != nil {
 			return err
@@ -551,7 +679,10 @@ func (x *TaskExecution) runCleanup(ctx context.Context) error {
 		cleanupPath := filepath.Join(x.taskDir, x.task.Cleanup)
 		cmd := exec.CommandContext(ctx, cleanupPath)
 		cmd.Dir = x.taskDir
-		cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig))
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),
+			fmt.Sprintf("K8S_AI_BENCH_TASK_OUTPUT_DIR=%s", x.taskOutputDir),
+		)
 
 		if err := x.runCommand(cmd); err != nil {
 			fmt.Printf("Warning: cleanup failed for task %s: %v\n", x.taskID, err)
@@ -569,25 +700,27 @@ func (x *TaskExecution) runCleanup(ctx context.Context) error {
 
 func (x *TaskExecution) runAgent(ctx context.Context) (string, error) {
 	tracePath := filepath.Join(x.taskOutputDir, "trace.yaml")
+	auditPath := filepath.Join(x.taskOutputDir, "cli-audit.jsonl")
+	wrapperDir := filepath.Join(x.taskOutputDir, "cli-wrappers")
 
-	args := []string{
-		"--kubeconfig", x.kubeConfig,
-		"--llm-provider", x.llmConfig.ProviderID,
-		fmt.Sprintf("--enable-tool-use-shim=%t", x.llmConfig.EnableToolUseShim),
-		fmt.Sprintf("--quiet=%t", x.llmConfig.Quiet),
-		"--model", x.llmConfig.ModelID,
-		"--trace-path", tracePath,
-		"--skip-permissions",
-		"--show-tool-output",
+	env, err := x.agentEnv(wrapperDir, auditPath)
+	if err != nil {
+		return "", err
 	}
-	if x.llmConfig.McpClient {
-		args = append(args, "--mcp-client")
+
+	bin, args, err := x.agentCommand(tracePath)
+	if err != nil {
+		return "", err
+	}
+
+	if x.agentConfig.Adapter == "direct-cli" {
+		return x.runDirectCLI(ctx, bin, args, env, auditPath)
 	}
 
 	stdinReader, stdinWriter := io.Pipe()
 
 	cmd := exec.CommandContext(ctx,
-		x.AgentBin,
+		bin,
 		args...,
 	)
 	cmd.Stdin = stdinReader
@@ -599,7 +732,7 @@ func (x *TaskExecution) runAgent(ctx context.Context) (string, error) {
 		cmd.Stderr = io.MultiWriter(cmd.Stderr, x.log)
 	}
 
-	cmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig))
+	cmd.Env = env
 
 	go func() {
 		// TODO: Wait for idle between sending steps?
@@ -608,6 +741,19 @@ func (x *TaskExecution) runAgent(ctx context.Context) (string, error) {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error resolving prompt: %v\n", err)
 				x.result.AddFailure("failed to resolve prompt: %v", err)
+				stdinWriter.Close()
+				return
+			}
+			prompt, err = x.composePrompt(prompt)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error composing prompt: %v\n", err)
+				x.result.AddFailure("failed to compose prompt: %v", err)
+				stdinWriter.Close()
+				return
+			}
+			if err := os.WriteFile(filepath.Join(x.taskOutputDir, "prompt.txt"), []byte(prompt), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "Error writing prompt: %v\n", err)
+				x.result.AddFailure("failed to write prompt: %v", err)
 				stdinWriter.Close()
 				return
 			}

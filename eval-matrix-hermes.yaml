@@ -1,0 +1,22 @@
+tasksDir: ./tasks/skill-cli-hermes
+outputDir: .build/hermes-bench
+clusterCreationPolicy: DoNotCreate
+
+agents:
+  - id: hermes
+    bin: ./k8s-ai-hermes-bridge
+    adapter: generic-stdin
+    env:
+      COPILOT_HERMES_BASE_URL: ${COPILOT_HERMES_BASE_URL}
+      COPILOT_HERMES_API_KEY: ${COPILOT_HERMES_API_KEY}
+      COPILOT_HERMES_MODEL: ${COPILOT_HERMES_MODEL}
+
+models:
+  - id: hermes-agent
+    provider: openai
+    model: hermes-agent
+
+runs:
+  iterations: 1
+  concurrency: 1
+  taskPattern: "kpanda-cluster-diagnosis"

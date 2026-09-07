@@ -38,20 +38,31 @@ const (
 )
 
 type Task struct {
-	Setup      string `json:"setup,omitempty"`
-	Verifier   string `json:"verifier,omitempty"`
-	Cleanup    string `json:"cleanup,omitempty"`
-	Difficulty string `json:"difficulty"`
-	Disabled   bool   `json:"disabled,omitempty"`
-	Timeout    string `json:"timeout,omitempty"`
+	Setup      string   `json:"setup,omitempty"`
+	Verifier   string   `json:"verifier,omitempty"`
+	Cleanup    string   `json:"cleanup,omitempty"`
+	Difficulty string   `json:"difficulty"`
+	Disabled   bool     `json:"disabled,omitempty"`
+	Timeout    string   `json:"timeout,omitempty"`
+	Agent      string   `json:"agent,omitempty"`
+	Skills     []string `json:"skills,omitempty"`
+	CLIs       []CLIRef `json:"clis,omitempty"`
 
 	Expect []Expectation `json:"expect,omitempty"`
 
 	Script []ScriptStep `json:"script,omitempty"`
 
+	CLIExpect []CLIExpectation `json:"cliExpect,omitempty"`
+
 	// Isolation can be set to automatically create an isolated cluster
 	// TODO: support namespaces also
 	Isolation IsolationMode `json:"isolation,omitempty"`
+}
+
+type CLIExpectation struct {
+	Name         string   `json:"name"`
+	Required     bool     `json:"required,omitempty"`
+	ArgvContains []string `json:"argvContains,omitempty"`
 }
 
 type IsolationMode string
@@ -62,8 +73,9 @@ const (
 )
 
 type ScriptStep struct {
-	Prompt     string `json:"prompt"`
-	PromptFile string `json:"promptFile"`
+	Prompt     string   `json:"prompt"`
+	PromptFile string   `json:"promptFile"`
+	Args       []string `json:"args,omitempty"`
 }
 
 // ResolvePrompt resolves the prompt from either inline or file source
@@ -109,6 +121,11 @@ type EvalConfig struct {
 	TasksDir                     string
 	TaskPattern                  string
 	AgentBin                     string
+	MatrixFile                   string
+	SkillsDir                    string
+	CLIsDir                      string
+	Iterations                   int
+	Agents                       map[string]AgentConfig
 	Concurrency                  int
 	ClusterCreationPolicy        ClusterCreationPolicy
 	ClusterProvider              string
@@ -121,6 +138,7 @@ type EvalConfig struct {
 
 type AnalyzeConfig struct {
 	InputDir          string
+	MatrixFile        string
 	OutputFormat      string
 	IgnoreToolUseShim bool
 	ShowFailures      bool
@@ -196,7 +214,8 @@ func run(ctx context.Context) error {
 func runEvals(ctx context.Context) error {
 	start := time.Now()
 	config := EvalConfig{
-		TasksDir: "./tasks",
+		TasksDir:   "./tasks",
+		Iterations: 1,
 	}
 
 	// Set custom usage for 'run' subcommand
@@ -221,6 +240,8 @@ func runEvals(ctx context.Context) error {
 	flag.StringVar(&config.KubeConfig, "kubeconfig", config.KubeConfig, "Path to kubeconfig file")
 	flag.StringVar(&config.TaskPattern, "task-pattern", config.TaskPattern, "Pattern to filter tasks (e.g. 'pod' or 'redis')")
 	flag.StringVar(&config.AgentBin, "agent-bin", config.AgentBin, "Path to kubernetes agent binary")
+	flag.StringVar(&config.MatrixFile, "matrix-file", config.MatrixFile, "YAML file describing agents, models, directories, and run matrix")
+	flag.IntVar(&config.Iterations, "iterations", config.Iterations, "Number of benchmark iterations")
 	flag.StringVar(&llmProvider, "llm-provider", llmProvider, "Specific LLM provider to evaluate (e.g. 'gemini' or 'ollama')")
 	flag.StringVar(&modelList, "models", modelList, "Comma-separated list of models to evaluate (e.g. 'gemini-1.0,gemini-2.0')")
 	flag.BoolVar(&enableToolUseShim, "enable-tool-use-shim", enableToolUseShim, "Enable tool use shim")
@@ -234,6 +255,51 @@ func runEvals(ctx context.Context) error {
 	flag.StringVar(&config.HostClusterKubeConfig, "host-cluster-kubeconfig", "", "Host cluster kubeconfig for vcluster (optional, defaults to --kubeconfig)")
 	flag.StringVar(&config.HostClusterIngressExternalIP, "host-cluster-ingress-external-ip", hostClusterIngressExternalIP, "Host cluster ingress external IP for vcluster (optional)")
 	flag.Parse()
+
+	if config.MatrixFile != "" {
+		matrix, err := loadMatrixConfig(config.MatrixFile)
+		if err != nil {
+			return err
+		}
+		if err := applyMatrixConfig(&config, matrix, quiet); err != nil {
+			return err
+		}
+	} else {
+		defaultModels := map[string][]string{
+			"gemini": {"gemini-2.5-pro"},
+		}
+
+		models := defaultModels
+		if modelList != "" {
+			if llmProvider == "" {
+				return fmt.Errorf("--llm-provider is required when --models is specified")
+			}
+			modelSlice := strings.Split(modelList, ",")
+			models = map[string][]string{
+				llmProvider: modelSlice,
+			}
+		}
+
+		for llmProviderID, models := range models {
+			var toolUseShimStr string
+			if enableToolUseShim {
+				toolUseShimStr = "shim_enabled"
+			} else {
+				toolUseShimStr = "shim_disabled"
+			}
+			for _, modelID := range models {
+				id := fmt.Sprintf("%s-%s-%s", toolUseShimStr, llmProviderID, modelID)
+				config.LLMConfigs = append(config.LLMConfigs, model.LLMConfig{
+					ID:                id,
+					ProviderID:        llmProviderID,
+					ModelID:           modelID,
+					EnableToolUseShim: enableToolUseShim,
+					Quiet:             quiet,
+					McpClient:         mcpClient,
+				})
+			}
+		}
+	}
 
 	if config.ClusterProvider == "vcluster" {
 		if config.HostClusterContext == "" {
@@ -263,39 +329,20 @@ func runEvals(ctx context.Context) error {
 		config.HostClusterKubeConfig = expandedHostKubeconfig
 	}
 
-	defaultModels := map[string][]string{
-		"gemini": {"gemini-2.5-pro"},
-	}
-
-	models := defaultModels
-	if modelList != "" {
-		if llmProvider == "" {
-			return fmt.Errorf("--llm-provider is required when --models is specified")
+	if len(config.Agents) == 0 {
+		if config.AgentBin == "" {
+			return fmt.Errorf("--agent-bin is required when --matrix-file is not specified")
 		}
-		modelSlice := strings.Split(modelList, ",")
-		models = map[string][]string{
-			llmProvider: modelSlice,
+		config.Agents = map[string]AgentConfig{
+			"kubectl-ai": {
+				ID:      "kubectl-ai",
+				Bin:     config.AgentBin,
+				Adapter: "kubectl-ai",
+			},
 		}
 	}
-
-	for llmProviderID, models := range models {
-		var toolUseShimStr string
-		if enableToolUseShim {
-			toolUseShimStr = "shim_enabled"
-		} else {
-			toolUseShimStr = "shim_disabled"
-		}
-		for _, modelID := range models {
-			id := fmt.Sprintf("%s-%s-%s", toolUseShimStr, llmProviderID, modelID)
-			config.LLMConfigs = append(config.LLMConfigs, model.LLMConfig{
-				ID:                id,
-				ProviderID:        llmProviderID,
-				ModelID:           modelID,
-				EnableToolUseShim: enableToolUseShim,
-				Quiet:             quiet,
-				McpClient:         mcpClient,
-			})
-		}
+	if config.Iterations <= 0 {
+		config.Iterations = 1
 	}
 
 	tasks, err := loadTasks(config)
@@ -325,7 +372,8 @@ func runAnalyze() error {
 
 	// Set custom usage for 'analyze' subcommand
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s analyze --input-dir <directory> [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s analyze --input-dir <directory> [options]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "   or: %s analyze --matrix-file <file> [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Analyze results from previous k8s-ai-bench runs.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
@@ -333,16 +381,28 @@ func runAnalyze() error {
 
 	var resultsFilePath string
 	flag.StringVar(&config.InputDir, "input-dir", config.InputDir, "Directory containing evaluation results (required)")
-	flag.StringVar(&config.OutputFormat, "output-format", config.OutputFormat, "Output format (markdown or json)")
+	flag.StringVar(&config.MatrixFile, "matrix-file", config.MatrixFile, "Matrix file to read outputDir from")
+	flag.StringVar(&config.OutputFormat, "output-format", config.OutputFormat, "Output format (markdown, json, or jsonl)")
 	flag.BoolVar(&config.IgnoreToolUseShim, "ignore-tool-use-shim", true, "Ignore tool use shim")
 	flag.BoolVar(&config.ShowFailures, "show-failures", false, "Show failure details in markdown output")
 	flag.StringVar(&resultsFilePath, "results-filepath", "", "Optional file path to write results to")
 	flag.Parse()
 
-	// Check if input-dir is provided
+	if config.MatrixFile != "" && config.InputDir == "" {
+		matrix, err := loadMatrixConfig(config.MatrixFile)
+		if err != nil {
+			return fmt.Errorf("loading matrix file: %w", err)
+		}
+		if matrix.OutputDir == "" {
+			return fmt.Errorf("matrix file %q does not define outputDir", config.MatrixFile)
+		}
+		config.InputDir = matrix.OutputDir
+	}
+
+	// Check if input-dir is provided directly or through matrix outputDir.
 	if config.InputDir == "" {
 		flag.Usage()
-		return fmt.Errorf("--input-dir is required")
+		return fmt.Errorf("--input-dir or --matrix-file is required")
 	}
 
 	// Check if output format is valid
@@ -424,9 +484,9 @@ func printFailureAndErrorDetails(buffer *strings.Builder, results []model.TaskRe
 			}
 			// for the IgnoreToolUseShim case
 			if showModel {
-				buffer.WriteString(fmt.Sprintf("**Task: %s (%s)**\n", result.Task, result.LLMConfig.ModelID))
+				buffer.WriteString(fmt.Sprintf("**Task: %s (%s / %s / iteration %d)**\n", result.Task, agentIDForResult(result), result.LLMConfig.ModelID, result.Iteration))
 			} else {
-				buffer.WriteString(fmt.Sprintf("**Task: %s**\n", result.Task))
+				buffer.WriteString(fmt.Sprintf("**Task: %s (%s / iteration %d)**\n", result.Task, agentIDForResult(result), result.Iteration))
 			}
 			buffer.WriteString(fmt.Sprintf("**Result: %s**\n", result.Result))
 			for _, failure := range result.Failures {
@@ -440,11 +500,119 @@ func printFailureAndErrorDetails(buffer *strings.Builder, results []model.TaskRe
 	}
 }
 
+type agentSkillSummaryRow struct {
+	Agent    string
+	Model    string
+	Task     string
+	Runs     int
+	Success  int
+	CLIMatch int
+	Errors   int
+}
+
+func buildAgentSkillSummary(results []model.TaskResult) []agentSkillSummaryRow {
+	rowsByKey := make(map[string]*agentSkillSummaryRow)
+	for _, result := range results {
+		agent := agentIDForResult(result)
+		key := strings.Join([]string{agent, result.LLMConfig.ModelID, result.Task}, "\x00")
+		row := rowsByKey[key]
+		if row == nil {
+			row = &agentSkillSummaryRow{
+				Agent: agent,
+				Model: result.LLMConfig.ModelID,
+				Task:  result.Task,
+			}
+			rowsByKey[key] = row
+		}
+		row.Runs++
+		if strings.Contains(strings.ToLower(result.Result), "success") {
+			row.Success++
+		}
+		if len(result.Error) > 0 || strings.Contains(strings.ToLower(result.Result), "error") {
+			row.Errors++
+		}
+		if requiredCLIMatched(result.CLIResults) {
+			row.CLIMatch++
+		}
+	}
+
+	rows := make([]agentSkillSummaryRow, 0, len(rowsByKey))
+	for _, row := range rowsByKey {
+		rows = append(rows, *row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Agent != rows[j].Agent {
+			return rows[i].Agent < rows[j].Agent
+		}
+		if rows[i].Model != rows[j].Model {
+			return rows[i].Model < rows[j].Model
+		}
+		return rows[i].Task < rows[j].Task
+	})
+	return rows
+}
+
+func requiredCLIMatched(results []model.CLIResult) bool {
+	hasRequired := false
+	for _, result := range results {
+		if !result.Required {
+			continue
+		}
+		hasRequired = true
+		if !result.Matched {
+			return false
+		}
+	}
+	return hasRequired
+}
+
+func agentIDForResult(result model.TaskResult) string {
+	if result.AgentID != "" {
+		return result.AgentID
+	}
+	return "kubectl-ai"
+}
+
+func cliMatchLabel(results []model.CLIResult) string {
+	hasRequired := false
+	for _, result := range results {
+		if !result.Required {
+			continue
+		}
+		hasRequired = true
+		if !result.Matched {
+			return "no"
+		}
+	}
+	if !hasRequired {
+		return "n/a"
+	}
+	return "yes"
+}
+
 func printMarkdownResults(config AnalyzeConfig, results []model.TaskResult, resultsFilePath string) error {
 	// Create a buffer to hold the output
 	var buffer strings.Builder
 
 	buffer.WriteString("# k8s-ai-bench Evaluation Results\n\n")
+
+	buffer.WriteString("## Agent Model Task Summary\n\n")
+	buffer.WriteString("| Agent | Model | Task | Runs | Task Success | Required CLI Match | Error |\n")
+	buffer.WriteString("|-------|-------|----------|------|--------------|--------------------|-------|\n")
+	for _, row := range buildAgentSkillSummary(results) {
+		buffer.WriteString(fmt.Sprintf("| %s | %s | %s | %d | %d (%d%%) | %d (%d%%) | %d |\n",
+			row.Agent,
+			row.Model,
+			row.Task,
+			row.Runs,
+			row.Success,
+			calculatePercentage(row.Success, row.Runs),
+			row.CLIMatch,
+			calculatePercentage(row.CLIMatch, row.Runs),
+			row.Errors,
+		))
+	}
+	buffer.WriteString("\n")
 
 	allModels := make(map[string]bool) // Track all unique models
 	for _, result := range results {
@@ -586,8 +754,8 @@ func printMarkdownResults(config AnalyzeConfig, results []model.TaskResult, resu
 
 		for _, model := range models {
 			buffer.WriteString(fmt.Sprintf("## Model: %s\n\n", model))
-			buffer.WriteString("| Task | Provider | Result |\n")
-			buffer.WriteString("|------|----------|--------|\n")
+			buffer.WriteString("| Agent | Task | Iteration | Provider | Required CLI | Result |\n")
+			buffer.WriteString("|-------|------|-----------|----------|--------------|--------|\n")
 
 			modelSuccessCount := 0
 			modelFailCount := 0
@@ -611,9 +779,12 @@ func printMarkdownResults(config AnalyzeConfig, results []model.TaskResult, resu
 					modelErrorCount++
 				}
 
-				buffer.WriteString(fmt.Sprintf("| %s | %s | %s %s |\n",
+				buffer.WriteString(fmt.Sprintf("| %s | %s | %d | %s | %s | %s %s |\n",
+					agentIDForResult(result),
 					result.Task,
+					result.Iteration,
 					result.LLMConfig.ProviderID,
+					cliMatchLabel(result.CLIResults),
 					resultEmoji, result.Result))
 			}
 
@@ -653,8 +824,8 @@ func printMarkdownResults(config AnalyzeConfig, results []model.TaskResult, resu
 			buffer.WriteString(fmt.Sprintf("## Tool Use: %s\n\n", toolUseShimStr))
 
 			// Create the table header
-			buffer.WriteString("| Task | Provider | Model | Result |\n")
-			buffer.WriteString("|------|----------|-------|--------|\n")
+			buffer.WriteString("| Agent | Task | Iteration | Provider | Model | Required CLI | Result |\n")
+			buffer.WriteString("|-------|------|-----------|----------|-------|--------------|--------|\n")
 
 			// Track success and failure counts for this strategy
 			successCount := 0
@@ -679,10 +850,13 @@ func printMarkdownResults(config AnalyzeConfig, results []model.TaskResult, resu
 					failCount++
 				}
 
-				buffer.WriteString(fmt.Sprintf("| %s | %s | %s | %s %s |\n",
+				buffer.WriteString(fmt.Sprintf("| %s | %s | %d | %s | %s | %s | %s %s |\n",
+					agentIDForResult(result),
 					result.Task,
+					result.Iteration,
 					result.LLMConfig.ProviderID,
 					result.LLMConfig.ModelID,
+					cliMatchLabel(result.CLIResults),
 					resultEmoji, result.Result))
 			}
 

@@ -21,6 +21,10 @@ type TaskResult struct {
 	LLMConfig LLMConfig `json:"llmConfig"`
 	Result    string    `json:"result"`
 
+	AgentID    string      `json:"agentID,omitempty"`
+	Iteration  int         `json:"iteration,omitempty"`
+	CLIResults []CLIResult `json:"cliResults,omitempty"`
+
 	// Failure contains a list of test failures, if there were unmet expectations.
 	// These do not indicate an infrastructure failure, rather they are the details of a test failure.
 	Failures []Failure `json:"failures,omitempty"`
@@ -32,22 +36,6 @@ type TaskResult struct {
 
 type Failure struct {
 	Message string `json:"message"`
-}
-
-type LLMConfig struct {
-	// ID is a short identifier for this configuration set, useful for writing logs etc
-	ID string `json:"id"`
-
-	ProviderID string `json:"provider"`
-	ModelID    string `json:"model"`
-
-	EnableToolUseShim bool `json:"enableToolUseShim"`
-
-	Quiet bool `json:"quiet"`
-
-	McpClient bool `json:"mcpClient"`
-
-	// TODO: Maybe different styles of invocation, or different temperatures etc?
 }
 
 // AddFailure is a helper for adding a formatted failure message; it also marks the test as failed
