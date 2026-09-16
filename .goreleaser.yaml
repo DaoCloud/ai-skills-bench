@@ -1,0 +1,84 @@
+version: 2
+
+project_name: k8s-ai-bench
+
+builds:
+  - id: k8s-ai-bench
+    main: .
+    binary: k8s-ai-bench
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+  - id: generic-llm-agent
+    main: ./cmd/generic-llm-agent
+    binary: generic-llm-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+  - id: k8s-ai-agent-bridge
+    main: ./cmd/k8s-ai-agent-bridge
+    binary: k8s-ai-agent-bridge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+  - id: k8s-ai-hermes-bridge
+    main: ./cmd/k8s-ai-hermes-bridge
+    binary: k8s-ai-hermes-bridge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^Merge '
+      - '^docs:'

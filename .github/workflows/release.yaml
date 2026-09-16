@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   goreleaser:
@@ -21,10 +20,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          check-latest: true
+          go-version-file: go.mod
 
-      - name: Install mockgen
-        run: go install go.uber.org/mock/mockgen@latest
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Validate GoReleaser configuration
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: check
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -33,7 +39,7 @@ jobs:
           version: latest
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update new version in krew-index
         uses: rajatjindal/krew-release-bot@v0.0.46
