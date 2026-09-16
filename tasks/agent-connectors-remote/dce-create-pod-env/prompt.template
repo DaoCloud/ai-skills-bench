@@ -1,0 +1,14 @@
+请使用 dce CLI 在指定的 DCE 环境中创建一个 Pod：
+
+- DCE 地址：${DCE_HOST}
+- DCE Token：${DCE_TOKEN}
+- 集群：kpanda-global-cluster
+- 命名空间：default
+- Pod 名称：k8s-ai-bench-dce-pod
+- 镜像：nginx:stable
+
+创建后查询 Pod，确认名称、命名空间和镜像都正确。
+不要创建其他资源，不要删除 Pod，清理由 cleanup.sh 完成。
+不要输出 Token。
+
+确认创建和查询都成功后，输出：DCE_POD_CREATED_OK

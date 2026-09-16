@@ -8,7 +8,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/k8s-ai-bench . \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/generic-llm-agent ./cmd/generic-llm-agent \
-    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/k8s-ai-hermes-bridge ./cmd/k8s-ai-hermes-bridge
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/k8s-ai-hermes-bridge ./cmd/k8s-ai-hermes-bridge \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/k8s-ai-agent-bridge ./cmd/k8s-ai-agent-bridge
 
 FROM debian:bookworm-slim
 
@@ -39,13 +40,14 @@ RUN set -eux; \
 COPY --from=builder /out/k8s-ai-bench /usr/local/bin/k8s-ai-bench
 COPY --from=builder /out/generic-llm-agent /usr/local/bin/generic-llm-agent
 COPY --from=builder /out/k8s-ai-hermes-bridge /usr/local/bin/k8s-ai-hermes-bridge
+COPY --from=builder /out/k8s-ai-agent-bridge /usr/local/bin/k8s-ai-agent-bridge
 
 WORKDIR /bench
 COPY tasks ./tasks
 COPY skills ./skills
 COPY clis ./clis
 COPY site ./site
-COPY eval-matrix.yaml eval-matrix-hermes.yaml ./
+COPY examples ./examples
 RUN mkdir -p .build
 
 ENTRYPOINT ["k8s-ai-bench"]

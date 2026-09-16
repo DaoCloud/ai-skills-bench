@@ -50,6 +50,7 @@ type MatrixRuns struct {
 	Iterations  int    `json:"iterations,omitempty"`
 	Concurrency int    `json:"concurrency,omitempty"`
 	TaskPattern string `json:"taskPattern,omitempty"`
+	Agent       string `json:"agent,omitempty"`
 }
 
 type MatrixConfig struct {
@@ -121,6 +122,11 @@ func applyMatrixConfig(config *EvalConfig, matrix MatrixConfig, defaultQuiet boo
 		}
 		config.Agents[agent.ID] = agent
 	}
+	if matrix.Runs.Agent != "" {
+		if _, ok := config.Agents[matrix.Runs.Agent]; !ok {
+			return fmt.Errorf("run agent %q is not configured", matrix.Runs.Agent)
+		}
+	}
 
 	for _, matrixModel := range matrix.Models {
 		if matrixModel.ID == "" {
@@ -155,6 +161,9 @@ func applyMatrixConfig(config *EvalConfig, matrix MatrixConfig, defaultQuiet boo
 	}
 	if matrix.Runs.TaskPattern != "" {
 		config.TaskPattern = matrix.Runs.TaskPattern
+	}
+	if matrix.Runs.Agent != "" {
+		config.Agent = matrix.Runs.Agent
 	}
 
 	return nil

@@ -30,3 +30,4 @@ trace.log
 # kubeconfig
 kubeconfig.yaml
 *kubeconfig*.yaml
+tasks/agent-connectors-remote/**/prompt.rendered

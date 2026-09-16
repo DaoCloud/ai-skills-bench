@@ -64,7 +64,7 @@ runs:
 --llm-provider <provider> --model <model>
 ```
 
-matrix 模式下，`tasksDir`、`outputDir`、`clusterCreationPolicy` 都从 `eval-matrix.yaml` 读取。`skillsDir` 仅在 task 声明本地 `skills` 时需要，`clisDir` 仅在 task 声明本地 `clis` 时需要；像 Hermes bridge 这类服务端提供 skills 和 CLI 的模式可以省略二者。常规运行不再需要额外传目录类 flag。
+matrix 模式下，`tasksDir`、`outputDir`、`clusterCreationPolicy` 都从 `examples/skill-cli/eval-matrix.yaml` 读取。`skillsDir` 仅在 task 声明本地 `skills` 时需要，`clisDir` 仅在 task 声明本地 `clis` 时需要；像 Hermes bridge 这类服务端提供 skills 和 CLI 的模式可以省略二者。常规运行不再需要额外传目录类 flag。
 
 `agents[].env` 和 `models[].env` 支持 `${VAR}` 形式的环境变量展开；实际密钥建议放在 shell 环境或 CI secret 中，matrix 文件只保留引用。
 
@@ -193,10 +193,10 @@ models:
 
 ```sh
 go build -o k8s-ai-hermes-bridge ./cmd/k8s-ai-hermes-bridge
-./k8s-ai-bench run --matrix-file eval-matrix-hermes.yaml
+./k8s-ai-bench run --matrix-file examples/agent-connectors/eval-matrix-hermes.yaml
 ```
 
-`eval-matrix-hermes.yaml` 使用 `tasks/skill-cli-hermes`。该 task 不声明本地 `skills` / `clis` / `cliExpect`，因为 Hermes bridge 的 skills 加载和 CLI 调用发生在服务端 Hermes Agent 环境中，不会命中 bench 本地 skill 注入或 CLI wrapper。
+`examples/agent-connectors/eval-matrix-hermes.yaml` 使用 `tasks/skill-cli-hermes`。该 task 不声明本地 `skills` / `clis` / `cliExpect`，因为 Hermes bridge 的 skills 加载和 CLI 调用发生在服务端 Hermes Agent 环境中，不会命中 bench 本地 skill 注入或 CLI wrapper。
 
 这里使用 `generic-stdin` adapter，因为 Hermes bridge 本质上是 stdin prompt runner。bench 会把组装好的 prompt 写入 stdin，并自动追加：
 
@@ -319,7 +319,7 @@ argvContains 是否匹配
 
 ```sh
 ./k8s-ai-bench analyze \
-  --matrix-file eval-matrix.yaml \
+  --matrix-file examples/skill-cli/eval-matrix.yaml \
   --output-format markdown \
   --results-filepath .build/skill-cli-bench/report.md \
   --show-failures
@@ -384,7 +384,7 @@ error
 
 ```mermaid
 flowchart TD
-    A["User runs k8s-ai-bench"] --> B["Load eval-matrix.yaml"]
+    A["User runs k8s-ai-bench"] --> B["Load examples/skill-cli/eval-matrix.yaml"]
     B --> C["Load tasks from matrix tasksDir"]
     C --> D["Resolve task.agent plus task skills and CLIs"]
     D --> E["Load SKILL.md files"]
@@ -440,14 +440,14 @@ go build -o generic-llm-agent ./cmd/generic-llm-agent
 
 ```sh
 ./k8s-ai-bench run \
-  --matrix-file eval-matrix.yaml
+  --matrix-file examples/skill-cli/eval-matrix.yaml
 ```
 
 分析：
 
 ```sh
 ./k8s-ai-bench analyze \
-  --matrix-file eval-matrix.yaml \
+  --matrix-file examples/skill-cli/eval-matrix.yaml \
   --output-format markdown \
   --results-filepath .build/skill-cli-bench/report.md \
   --show-failures
@@ -459,3 +459,7 @@ go build -o generic-llm-agent ./cmd/generic-llm-agent
 - 当前工具调用协议依赖 LLM 输出 `<command>` / `<final>` 标签。
 - CLI 安全控制主要依赖 benchmark 环境、PATH wrapper 和 task timeout。
 - `direct-cli` adapter 只适合 CLI smoke test，不适合验证 LLM 推理能力。
+
+如需评测 Codex CLI、Claude Code、OpenClaw 或 Hermes，请使用
+`cmd/k8s-ai-agent-bridge`。它将 CLI 和 OpenAI-compatible 网关统一转换成
+`generic-stdin` 协议；详见 [Agent Connectors](agent-connectors.md)。

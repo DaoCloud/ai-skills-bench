@@ -125,6 +125,7 @@ type EvalConfig struct {
 	SkillsDir                    string
 	CLIsDir                      string
 	Iterations                   int
+	Agent                        string
 	Agents                       map[string]AgentConfig
 	Concurrency                  int
 	ClusterCreationPolicy        ClusterCreationPolicy

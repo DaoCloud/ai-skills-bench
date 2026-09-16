@@ -4,12 +4,13 @@ clusterCreationPolicy: DoNotCreate
 
 agents:
   - id: hermes
-    bin: ./k8s-ai-hermes-bridge
+    bin: ./k8s-ai-agent-bridge
     adapter: generic-stdin
+    args: [--agent, hermes]
     env:
-      COPILOT_HERMES_BASE_URL: ${COPILOT_HERMES_BASE_URL}
-      COPILOT_HERMES_API_KEY: ${COPILOT_HERMES_API_KEY}
-      COPILOT_HERMES_MODEL: ${COPILOT_HERMES_MODEL}
+      HERMES_BASE_URL: ${HERMES_BASE_URL}
+      HERMES_GATEWAY_TOKEN: ${HERMES_GATEWAY_TOKEN}
+      HERMES_AGENT_TARGET: ${HERMES_AGENT_TARGET}
 
 models:
   - id: hermes-agent
