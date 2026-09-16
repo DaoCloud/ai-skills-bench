@@ -84,10 +84,10 @@ docker run --rm \
   -e OPENAI_API_KEY \
   -v "$PWD/clis:/bench/clis:ro" \
   -v "$PWD/.build:/bench/.build" \
-  k8s-ai-bench run --matrix-file /bench/eval-matrix.yaml
+  k8s-ai-bench run --matrix-file /bench/examples/skill-cli/eval-matrix.yaml
 ```
 
-For example, the checked-in `eval-matrix.yaml` expects `./clis/dce` to exist in
+For example, the checked-in `examples/skill-cli/eval-matrix.yaml` expects `./clis/dce` to exist in
 the container. If your matrix references local agents that are not already in
 the image, mount them into the paths used by the matrix file, or mount a custom
 matrix file and point `--matrix-file` at that container path.

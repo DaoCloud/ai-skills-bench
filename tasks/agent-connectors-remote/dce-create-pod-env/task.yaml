@@ -1,0 +1,12 @@
+skills:
+  - dce/SKILL.md
+
+setup: setup.sh
+
+script:
+  - promptFile: prompt.rendered
+
+verifier: verify.sh
+cleanup: cleanup.sh
+difficulty: medium
+timeout: 10m

@@ -90,7 +90,7 @@ For skill and CLI benchmarks, use a matrix file to declare agents, models, optio
 
 ```sh
 ./k8s-ai-bench run \
-  --matrix-file eval-matrix.yaml
+  --matrix-file examples/skill-cli/eval-matrix.yaml
 ```
 
 Each task can select the agent and declare any required local skills and CLIs explicitly:
@@ -123,12 +123,55 @@ go build -o generic-llm-agent ./cmd/generic-llm-agent
 
 The generic agent reads the injected prompt from stdin, asks the configured LLM to emit `<command>` or `<final>` blocks, and executes commands from `PATH`. Benchmark CLI wrappers still provide auditing.
 
-Hermes can be evaluated as an independent stdin agent through the bundled bridge:
+Hermes can be evaluated through the unified connector bridge:
 
 ```sh
-go build -o k8s-ai-hermes-bridge ./cmd/k8s-ai-hermes-bridge
-./k8s-ai-bench run --matrix-file eval-matrix-hermes.yaml
+go build -o k8s-ai-agent-bridge ./cmd/k8s-ai-agent-bridge
+./k8s-ai-bench run --matrix-file examples/agent-connectors/eval-matrix-hermes.yaml
 ```
+
+The older `k8s-ai-hermes-bridge` binary remains available for compatibility.
+
+Codex CLI, Claude Code, OpenClaw, and Hermes can use the same bridge. Set
+`runs.agent` in a matrix file to select one configured connector. Codex and
+Claude use headless CLI modes; OpenClaw and Hermes use their
+OpenAI-compatible gateway endpoints. See [Agent Connectors](docs/agent-connectors.md).
+
+To run one specific agent from a matrix that defines several agents, set
+`runs.agent` to the configured agent ID:
+
+```yaml
+agents:
+  - id: codex
+    bin: ./k8s-ai-agent-bridge
+    adapter: generic-stdin
+    args: [--agent, codex]
+
+  - id: openclaw
+    bin: ./k8s-ai-agent-bridge
+    adapter: generic-stdin
+    args: [--agent, openclaw]
+    env:
+      OPENCLAW_BASE_URL: ${OPENCLAW_BASE_URL}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_AGENT_TARGET: ${OPENCLAW_AGENT_TARGET}
+
+runs:
+  agent: codex
+  taskPattern: "create-pod"
+```
+
+Then run the matrix normally:
+
+```sh
+./k8s-ai-bench run \
+  --matrix-file examples/agent-connectors/eval-matrix-agents.yaml
+```
+
+Change `runs.agent` to `openclaw`, `claude`, or `hermes` to select another
+configured connector. A run-level agent takes precedence over `agent` declared
+inside an individual task. See the complete example at
+[`examples/agent-connectors/eval-matrix-agents.yaml`](examples/agent-connectors/eval-matrix-agents.yaml).
 
 See [docs/agent-skill-cli-matrix.md](docs/agent-skill-cli-matrix.md) for the full matrix workflow, adapter contracts, CLI wrapper audit behavior, and Hermes bridge details.
 
