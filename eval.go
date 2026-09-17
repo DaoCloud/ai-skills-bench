@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -549,7 +550,7 @@ func evaluateTask(ctx context.Context, config EvalConfig, taskID string, task Ta
 	// Run verifier if specified
 	if task.Verifier != "" {
 		verifierPath := filepath.Join(taskDir, task.Verifier)
-		cmd := exec.CommandContext(taskCtx, verifierPath)
+		cmd := taskScriptCommand(taskCtx, verifierPath)
 		cmd.Env = x.lifecycleEnv(
 			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),
 			fmt.Sprintf("K8S_AI_BENCH_TASK_OUTPUT_DIR=%s", x.taskOutputDir),
@@ -617,6 +618,24 @@ type TaskExecution struct {
 	clusterProvider cluster.Provider
 }
 
+func taskScriptCommand(ctx context.Context, scriptPath string) *exec.Cmd {
+	return taskScriptCommandForOS(ctx, runtime.GOOS, scriptPath)
+}
+
+func taskScriptCommandForOS(ctx context.Context, goos, scriptPath string) *exec.Cmd {
+	if goos == "windows" && strings.EqualFold(filepath.Ext(scriptPath), ".ps1") {
+		return exec.CommandContext(
+			ctx,
+			"powershell.exe",
+			"-NoProfile",
+			"-NonInteractive",
+			"-ExecutionPolicy", "Bypass",
+			"-File", scriptPath,
+		)
+	}
+	return exec.CommandContext(ctx, scriptPath)
+}
+
 func (x *TaskExecution) runSetup(ctx context.Context) error {
 	log := klog.FromContext(ctx)
 
@@ -659,7 +678,7 @@ func (x *TaskExecution) runSetup(ctx context.Context) error {
 	// Run setup if specified
 	if x.task.Setup != "" {
 		setupPath := filepath.Join(x.taskDir, x.task.Setup)
-		cmd := exec.CommandContext(ctx, setupPath)
+		cmd := taskScriptCommand(ctx, setupPath)
 		cmd.Dir = x.taskDir
 		cmd.Env = x.lifecycleEnv(
 			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),
@@ -680,7 +699,7 @@ func (x *TaskExecution) runCleanup(ctx context.Context) error {
 	// Run cleanup if specified
 	if x.task.Cleanup != "" {
 		cleanupPath := filepath.Join(x.taskDir, x.task.Cleanup)
-		cmd := exec.CommandContext(ctx, cleanupPath)
+		cmd := taskScriptCommand(ctx, cleanupPath)
 		cmd.Dir = x.taskDir
 		cmd.Env = x.lifecycleEnv(
 			fmt.Sprintf("KUBECONFIG=%s", x.kubeConfig),

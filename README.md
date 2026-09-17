@@ -115,6 +115,13 @@ verifier: verify.sh
 difficulty: medium
 ```
 
+Task lifecycle scripts can be written for the target operating system. Unix
+tasks can use `setup.sh`, `verify.sh`, and `cleanup.sh`. On Windows, use the
+corresponding `.ps1` files; the benchmark invokes them with PowerShell using
+`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The lifecycle
+environment, including `KUBECONFIG`, `K8S_AI_BENCH_TASK_OUTPUT_DIR`, and agent
+configuration variables, is passed to both Bash and PowerShell scripts.
+
 For generic Skill/CLI evaluation, build the bundled minimal agent and reference it with the `generic-stdin` adapter:
 
 ```sh
