@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -80,6 +81,33 @@ func TestAgentCommandAdapters(t *testing.T) {
 	}
 	if bin != "/bin/dce" || len(args) != 1 || args[0] != "container-management" {
 		t.Fatalf("direct-cli command = %q %#v, want /bin/dce [container-management]", bin, args)
+	}
+}
+
+func TestTaskScriptCommandUsesPowerShellOnWindows(t *testing.T) {
+	cmd := taskScriptCommandForOS(context.Background(), "windows", `C:\tasks\verify.ps1`)
+
+	if cmd.Path != "powershell.exe" {
+		t.Fatalf("command path = %q, want powershell.exe", cmd.Path)
+	}
+	wantArgs := []string{
+		"powershell.exe",
+		"-NoProfile",
+		"-NonInteractive",
+		"-ExecutionPolicy", "Bypass",
+		"-File", `C:\tasks\verify.ps1`,
+	}
+	if !reflect.DeepEqual(cmd.Args, wantArgs) {
+		t.Fatalf("command args = %#v, want %#v", cmd.Args, wantArgs)
+	}
+}
+
+func TestTaskScriptCommandKeepsDirectExecutionOnUnix(t *testing.T) {
+	path := "/tmp/tasks/verify.sh"
+	cmd := taskScriptCommandForOS(context.Background(), "linux", path)
+
+	if cmd.Path != path || !reflect.DeepEqual(cmd.Args, []string{path}) {
+		t.Fatalf("command = %#v, want direct execution of %q", cmd.Args, path)
 	}
 }
 
